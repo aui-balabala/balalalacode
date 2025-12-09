@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>音乐播放器</title>
+    <link rel="stylesheet" href="./css/audio.css" />
+  </head>
+  <body background="./img/bg0.png">
+    <!-- 上半部分 -->
+    <div class="upper-container">
+      <!-- 唱片 -->
+      <div class="record-container">
+        <div class="record-bg">
+          <div class="record-img"></div>
+        </div>
+      </div>
+      <!-- 右边的歌曲名 -->
+      <div class="introduction-container">
+        <div class="music-title">洛春赋</div>
+        <div class="author-container">
+          作者：
+          <span class="author-name">云汐</span>
+        </div>
+      </div>
+    </div>
+    <!-- 下半部分 -->
+    <div class="bottom-container">
+      <!-- 进度条 -->
+      <div class="progress"></div>
+      <!-- 控件部分 -->
+      <div class="controls">
+        <!-- 左 -->
+        <div class="left">
+          <span class="played-time">00:00</span>
+          &nbsp;/&nbsp;
+          <span class="audio-time">00:00</span>
+        </div>
+        <!-- 中 -->
+        <div class="center">
+          <div id="playMode" class="center-icon"></div>
+          <div id="before-music" class="center-icon"></div>
+          <div id="playPause" class="center-icon"></div>
+          <div id="last-music" class="center-icon"></div>
+          <div id="volumn" class="center-icon"></div>
+          <!-- 音量进度条 -->
+          <input type="range" id="volumn-togger" value="70" min="0" max="100" step="1" />
+        </div>
+        <!-- 右 -->
+        <div class="right">
+          <!-- MV -->
+          <div id="MV" class="bottom-icon"></div>
+          <!-- 倍速 -->
+          <div id="speed">1.0X</div>
+          <!-- 列表 -->
+          <div id="list" class="bottom-icon"></div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 播放列表 -->
+    <div id="playlist-container" class="playlist-container">
+      <div class="playlist-header">
+        <h3>播放列表</h3>
+        <div class="playlist-close">×</div>
+      </div>
+      <div id="playlist-content" class="playlist-content">
+        <!-- 歌曲列表将通过JavaScript动态生成 -->
+      </div>
+    </div>
+    
+    <!-- MV播放模态框 -->
+    <div id="mv-modal" class="mv-modal">
+      <div class="mv-backdrop"></div>
+      <div class="mv-content">
+        <div class="mv-header">
+          <span id="mv-title" class="mv-title">MV 播放</span>
+          <div id="mv-close" class="mv-close">×</div>
+        </div>
+        <div class="mv-player-container">
+          <video id="mv-player" class="mv-player" controls></video>
+        </div>
+      </div>
+    </div>
+  </body>
+  <script>
+    // 音乐数据
+    const musicList = [
+      { name: '洛春赋', author: '云汐', src: './mp3/music0.mp3', cover: './img/record0.jpg', bg: './img/bg0.png', video: './mp4/video0.mp4' },
+      { name: '稻香', author: '周杰伦', src: './mp3/music1.mp3', cover: './img/record1.jpg', bg: './img/bg1.png', video: './mp4/video1.mp4' },
+      { name: '游乐园', author: '周杰伦', src: './mp3/music2.mp3', cover: './img/record2.jpg', bg: './img/bg2.png', video: './mp4/video2.mp4' },
+      { name: '一路向北', author: '周杰伦', src: './mp3/music3.mp3', cover: './img/record3.jpg', bg: './img/bg3.png', video: './mp4/video3.mp4' }
+    ];
+
+    // 创建音频元素
+    const audio = new Audio();
+    let currentIndex = 0;
+    let isPlaying = false;
+    let playMode = 1; // 1: 顺序播放, 2: 随机播放, 3: 单曲循环
+    let speed = 1.0;
+    let isMuted = false;
+    let lastVolume = 70;
+
+    // DOM元素
+    const elements = {
+      playPause: document.getElementById('playPause'),
+      beforeMusic: document.getElementById('before-music'),
+      lastMusic: document.getElementById('last-music'),
+      volumn: document.getElementById('volumn'),
+      volumnTogger: document.getElementById('volumn-togger'),
+      playMode: document.getElementById('playMode'),
+      speed: document.getElementById('speed'),
+      MV: document.getElementById('MV'),
+      list: document.getElementById('list'),
+      progress: document.querySelector('.progress'),
+      playedTime: document.querySelector('.played-time'),
+      audioTime: document.querySelector('.audio-time'),
+      musicTitle: document.querySelector('.music-title'),
+      authorName: document.querySelector('.author-name'),
+      recordImg: document.querySelector('.record-img'),
+      recordBg: document.querySelector('.record-bg'),
+      body: document.body,
+      progressIndicator: null, // 将在createProgressBar函数中初始化
+      playlistContainer: document.getElementById('playlist-container'),
+      playlistContent: document.getElementById('playlist-content'),
+      playlistClose: document.querySelector('.playlist-close'),
+      // MV相关DOM元素
+      mvModal: document.getElementById('mv-modal'),
+      mvPlayer: document.getElementById('mv-player'),
+      mvClose: document.getElementById('mv-close'),
+      mvTitle: document.getElementById('mv-title')
+    };
+
+    // 初始化
+    function init() {
+      // 设置初始音量
+      audio.volume = elements.volumnTogger.value / 100;
+      // 加载第一首歌
+      loadMusic(currentIndex);
+      // 绑定事件
+      bindEvents();
+      // 创建进度条内部元素
+      createProgressBar();
+      // 初始化播放列表
+      updatePlaylist();
+    }
+
+    // 创建进度条内部元素
+    function createProgressBar() {
+      // 确保之前的进度条被移除
+      const existingProgressBar = elements.progress.querySelector('.progress-bar');
+      if (existingProgressBar) {
+        elements.progress.removeChild(existingProgressBar);
+      }
+      
+      // 创建进度条背景
+      elements.progress.style.position = 'relative';
+      elements.progress.style.cursor = 'pointer';
+      
+      // 创建进度条填充部分
+      const progressBar = document.createElement('div');
+      progressBar.className = 'progress-bar';
+      progressBar.style.width = '0%';
+      progressBar.style.height = '100%';
+      progressBar.style.backgroundColor = 'green';
+      progressBar.style.position = 'absolute';
+      progressBar.style.top = '0';
+      progressBar.style.left = '0';
+      progressBar.style.transition = 'width 0.1s linear'; // 添加平滑过渡效果
+      elements.progress.appendChild(progressBar);
+      
+      // 创建进度指示器（小圆点）
+      const progressIndicator = document.createElement('div');
+      progressIndicator.className = 'progress-indicator';
+      progressIndicator.style.width = '12px';
+      progressIndicator.style.height = '12px';
+      progressIndicator.style.backgroundColor = 'white';
+      progressIndicator.style.borderRadius = '50%';
+      progressIndicator.style.position = 'absolute';
+      progressIndicator.style.top = '50%';
+      progressIndicator.style.transform = 'translate(-50%, -50%)';
+      progressIndicator.style.left = '0%';
+      progressIndicator.style.boxShadow = '0 0 5px rgba(0, 0, 0, 0.3)';
+      progressIndicator.style.transition = 'left 0.1s linear'; // 添加平滑过渡效果
+      elements.progress.appendChild(progressIndicator);
+      
+      // 存储指示器元素引用
+      elements.progressIndicator = progressIndicator;
+    }
+
+    // 加载音乐
+    function loadMusic(index) {
+      const music = musicList[index];
+      elements.musicTitle.textContent = music.name;
+      elements.authorName.textContent = music.author;
+      elements.recordImg.style.backgroundImage = `url('${music.cover}')`;
+      elements.body.style.backgroundImage = `url('${music.bg}')`;
+      
+      // 设置音频源
+      audio.src = music.src;
+      audio.load();
+      
+      // 当音频可以播放时更新时间显示
+      audio.onloadedmetadata = function() {
+        updateTimeDisplay();
+      };
+      
+      // 当音频播放结束时
+      audio.onended = function() {
+        if (playMode === 3) { // 单曲循环
+          audio.currentTime = 0;
+          audio.play();
+        } else {
+          playNext();
+        }
+      };
+      
+      // 当播放位置改变时更新进度条
+      audio.ontimeupdate = function() {
+        updateProgress();
+        updateTimeDisplay();
+      };
+    }
+
+    // 播放/暂停切换
+    function togglePlayPause() {
+      if (isPlaying) {
+        pauseMusic();
+      } else {
+        playMusic();
+      }
+    }
+
+    // 播放音乐
+    function playMusic() {
+      isPlaying = true;
+      elements.playPause.style.backgroundImage = "url('./img/暂停.png')";
+      // 添加唱片旋转动画
+      elements.recordImg.style.animation = 'rotate 10s linear infinite';
+      // 实际播放音频
+      audio.play().catch(error => {
+        console.log('播放失败:', error);
+      });
+    }
+
+    // 暂停音乐
+    function pauseMusic() {
+      isPlaying = false;
+      elements.playPause.style.backgroundImage = "url('./img/继续播放.png')";
+      // 暂停唱片旋转动画
+      elements.recordImg.style.animationPlayState = 'paused';
+      // 实际暂停音频
+      audio.pause();
+    }
+
+    // 上一首
+    function playPrevious() {
+      if (playMode === 2) { // 随机播放
+        currentIndex = Math.floor(Math.random() * musicList.length);
+      } else {
+        currentIndex = (currentIndex - 1 + musicList.length) % musicList.length;
+      }
+      loadMusic(currentIndex);
+      if (isPlaying) {
+        playMusic();
+      }
+      updatePlaylist(); // 更新播放列表的活动状态
+    }
+
+    // 下一首
+    function playNext() {
+      if (playMode === 2) { // 随机播放
+        currentIndex = Math.floor(Math.random() * musicList.length);
+      } else {
+        currentIndex = (currentIndex + 1) % musicList.length;
+      }
+      loadMusic(currentIndex);
+      if (isPlaying) {
+        playMusic();
+      }
+      updatePlaylist(); // 更新播放列表的活动状态
+    }
+
+    // 切换播放模式
+    function togglePlayMode() {
+      playMode = (playMode % 3) + 1;
+      updatePlayModeIcon();
+    }
+
+    // 更新播放模式图标
+    function updatePlayModeIcon() {
+      elements.playMode.style.backgroundImage = `url('./img/mode${playMode}.png')`;
+    }
+
+    // 切换音量
+    function toggleMute() {
+      isMuted = !isMuted;
+      if (isMuted) {
+        lastVolume = elements.volumnTogger.value;
+        elements.volumnTogger.value = 0;
+        elements.volumn.style.backgroundImage = "url('./img/静音.png')";
+        audio.volume = 0;
+      } else {
+        elements.volumnTogger.value = lastVolume;
+        elements.volumn.style.backgroundImage = "url('./img/音量.png')";
+        audio.volume = lastVolume / 100;
+      }
+    }
+
+    // 调整音量
+    function adjustVolume() {
+      const volume = elements.volumnTogger.value / 100;
+      audio.volume = volume;
+      if (volume === 0 && !isMuted) {
+        isMuted = true;
+        elements.volumn.style.backgroundImage = "url('./img/静音.png')";
+      } else if (volume > 0 && isMuted) {
+        isMuted = false;
+        elements.volumn.style.backgroundImage = "url('./img/音量.png')";
+      }
+      lastVolume = elements.volumnTogger.value;
+    }
+
+    // 切换倍速
+    function toggleSpeed() {
+      const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+      const currentSpeedIndex = speeds.indexOf(speed);
+      const nextSpeedIndex = (currentSpeedIndex + 1) % speeds.length;
+      speed = speeds[nextSpeedIndex];
+      elements.speed.textContent = `${speed}X`;
+      audio.playbackRate = speed;
+    }
+
+    // 获取当前播放时间
+    function getCurrentTime() {
+      return audio.currentTime;
+    }
+    
+    // 获取音频总时长
+    function getDuration() {
+      return audio.duration;
+    }
+
+    // 更新进度条
+    function updateProgress() {
+      if (audio.duration === undefined || isNaN(audio.duration)) return;
+      
+      const progress = (audio.currentTime / audio.duration) * 100;
+      const progressBar = elements.progress.querySelector('.progress-bar');
+      
+      if (progressBar) {
+        progressBar.style.width = `${progress}%`;
+      }
+      
+      // 更新进度指示器位置
+      if (elements.progressIndicator) {
+        elements.progressIndicator.style.left = `${progress}%`;
+      }
+    }
+
+    // 更新时间显示
+    function updateTimeDisplay() {
+      elements.playedTime.textContent = formatTime(audio.currentTime);
+      elements.audioTime.textContent = formatTime(audio.duration);
+    }
+
+    // 格式化时间
+    function formatTime(seconds) {
+      const mins = Math.floor(seconds / 60);
+      const secs = Math.floor(seconds % 60);
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    // 处理进度条点击
+    function handleProgressClick(e) {
+      if (audio.duration === undefined || isNaN(audio.duration)) return;
+      
+      const rect = elements.progress.getBoundingClientRect();
+      const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)); // 限制在0-1范围内
+      audio.currentTime = pos * audio.duration;
+      // updateProgress和updateTimeDisplay将由ontimeupdate事件自动触发
+    }
+
+    // 显示/隐藏播放列表
+    function togglePlaylist() {
+      elements.playlistContainer.classList.toggle('show');
+    }
+    
+    // 更新播放列表
+    function updatePlaylist() {
+      elements.playlistContent.innerHTML = '';
+      
+      musicList.forEach((music, index) => {
+        const item = document.createElement('div');
+        item.className = `playlist-item ${index === currentIndex ? 'active' : ''}`;
+        item.dataset.index = index;
+        
+        const info = document.createElement('div');
+        info.className = 'playlist-item-info';
+        
+        const title = document.createElement('div');
+        title.className = 'playlist-item-title';
+        title.textContent = music.name;
+        
+        const author = document.createElement('div');
+        author.className = 'playlist-item-author';
+        author.textContent = music.author;
+        
+        info.appendChild(title);
+        info.appendChild(author);
+        item.appendChild(info);
+        
+        // 点击事件
+        item.addEventListener('click', () => {
+          const selectedIndex = parseInt(item.dataset.index);
+          if (selectedIndex !== currentIndex) {
+            currentIndex = selectedIndex;
+            loadMusic(currentIndex);
+            if (isPlaying) {
+              playMusic();
+            }
+            updatePlaylist(); // 更新活动状态
+          }
+        });
+        
+        elements.playlistContent.appendChild(item);
+      });
+    }
+    
+    // 关闭播放列表
+    function closePlaylist() {
+      elements.playlistContainer.classList.remove('show');
+    }
+
+    // MV播放相关函数
+    function showMV() {
+      const currentMusic = musicList[currentIndex];
+      if (!currentMusic.video) {
+        alert('当前歌曲没有MV');
+        return;
+      }
+      
+      // 设置MV标题
+      elements.mvTitle.textContent = currentMusic.name + ' - MV';
+      
+      // 设置视频源
+      elements.mvPlayer.src = currentMusic.video;
+      
+      // 视频加载完成后自动播放
+      elements.mvPlayer.onloadedmetadata = function() {
+        elements.mvPlayer.play().catch(error => {
+          console.log('MV播放失败:', error);
+        });
+      };
+      
+      // 显示MV模态框
+      elements.mvModal.classList.add('show');
+      
+      // 暂停音频播放
+      if (isPlaying) {
+        pauseMusic();
+      }
+      
+      // 禁止背景滚动
+      elements.body.style.overflow = 'hidden';
+    }
+    
+    function closeMV() {
+      // 隐藏MV模态框
+      elements.mvModal.classList.remove('show');
+      
+      // 暂停视频播放
+      elements.mvPlayer.pause();
+      
+      // 清空视频源
+      elements.mvPlayer.src = '';
+      
+      // 恢复背景滚动
+      elements.body.style.overflow = '';
+      
+      // 恢复音频播放状态（如果之前在播放）
+      // 注意：这里不自动恢复播放，留给用户手动控制
+    }
+
+    // 绑定事件
+    function bindEvents() {
+      elements.playPause.addEventListener('click', togglePlayPause);
+      elements.beforeMusic.addEventListener('click', playPrevious);
+      elements.lastMusic.addEventListener('click', playNext);
+      elements.volumn.addEventListener('click', toggleMute);
+      elements.volumnTogger.addEventListener('input', adjustVolume);
+      elements.playMode.addEventListener('click', togglePlayMode);
+      elements.speed.addEventListener('click', toggleSpeed);
+      elements.MV.addEventListener('click', showMV);
+      elements.list.addEventListener('click', togglePlaylist);
+      elements.playlistClose.addEventListener('click', closePlaylist);
+      elements.progress.addEventListener('click', handleProgressClick);
+      
+      // MV相关事件
+      elements.mvClose.addEventListener('click', closeMV);
+      
+      // 点击背景关闭MV
+      elements.mvModal.querySelector('.mv-backdrop').addEventListener('click', closeMV);
+      
+      // 阻止事件冒泡，避免点击视频容器关闭MV
+      elements.mvModal.querySelector('.mv-content').addEventListener('click', function(e) {
+        e.stopPropagation();
+      });
+      
+      // 键盘快捷键支持
+      document.addEventListener('keydown', function(e) {
+        // 如果在输入框中，则不响应快捷键
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+          return;
+        }
+        
+        switch (e.key.toLowerCase()) {
+          case ' ':
+          case 'k':
+            e.preventDefault();
+            togglePlayPause();
+            break;
+          case 'arrowleft':
+            e.preventDefault();
+            // 快退10秒
+            audio.currentTime = Math.max(0, audio.currentTime - 10);
+            break;
+          case 'arrowright':
+            e.preventDefault();
+            // 快进10秒
+            audio.currentTime = Math.min(audio.duration, audio.currentTime + 10);
+            break;
+          case 'arrowup':
+            e.preventDefault();
+            // 增加音量
+            elements.volumnTogger.value = Math.min(100, parseInt(elements.volumnTogger.value) + 5);
+            adjustVolume();
+            break;
+          case 'arrowdown':
+            e.preventDefault();
+            // 减少音量
+            elements.volumnTogger.value = Math.max(0, parseInt(elements.volumnTogger.value) - 5);
+            adjustVolume();
+            break;
+          case 'm':
+            toggleMute();
+            break;
+          case 'l':
+            togglePlaylist();
+            break;
+          case 'v':
+            showMV();
+            break;
+          case 'escape':
+            // 关闭播放列表或MV
+            if (elements.playlistContainer.classList.contains('show')) {
+              closePlaylist();
+            } else if (elements.mvModal.classList.contains('show')) {
+              closeMV();
+            }
+            break;
+        }
+      });
+      
+      // 窗口大小改变时重新调整进度条
+      window.addEventListener('resize', function() {
+        updateProgress();
+      });
+    }
+
+    // 添加CSS动画和样式
+    function addAnimationCSS() {
+      const style = document.createElement('style');
+      style.textContent = `
+        @keyframes rotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        
+        /* 播放列表样式 */
+        .playlist-container {
+          position: fixed;
+          top: 0;
+          right: -300px;
+          width: 300px;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.8);
+          color: white;
+          z-index: 1000;
+          transition: right 0.3s ease;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        
+        .playlist-container.show {
+          right: 0;
+        }
+        
+        .playlist-header {
+          padding: 20px;
+          border-bottom: 1px solid #444;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .playlist-header h3 {
+          margin: 0;
+          font-size: 18px;
+        }
+        
+        .playlist-close {
+          font-size: 24px;
+          cursor: pointer;
+          color: #888;
+          transition: color 0.2s;
+        }
+        
+        .playlist-close:hover {
+          color: white;
+        }
+        
+        .playlist-content {
+          flex: 1;
+          overflow-y: auto;
+          padding: 0;
+        }
+        
+        .playlist-item {
+          padding: 12px 20px;
+          border-bottom: 1px solid #333;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        
+        .playlist-item:hover {
+          background-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        .playlist-item.active {
+          background-color: rgba(0, 150, 136, 0.5);
+        }
+        
+        .playlist-item-info {
+          flex: 1;
+        }
+        
+        .playlist-item-title {
+          font-size: 16px;
+          margin-bottom: 4px;
+        }
+        
+        .playlist-item-author {
+          font-size: 12px;
+          color: #999;
+        }
+        
+        /* MV播放模态框样式 */
+        .mv-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 2000;
+          display: none;
+          justify-content: center;
+          align-items: center;
+        }
+        
+        .mv-modal.show {
+          display: flex;
+        }
+        
+        .mv-backdrop {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.9);
+        }
+        
+        .mv-content {
+          position: relative;
+          width: 90%;
+          max-width: 1000px;
+          background-color: #000;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+        }
+        
+        .mv-header {
+          padding: 15px 20px;
+          background-color: rgba(0, 0, 0, 0.8);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          color: white;
+        }
+        
+        .mv-title {
+          font-size: 18px;
+          font-weight: bold;
+        }
+        
+        .mv-close {
+          font-size: 28px;
+          cursor: pointer;
+          color: #888;
+          transition: color 0.2s;
+        }
+        
+        .mv-close:hover {
+          color: white;
+        }
+        
+        .mv-player-container {
+          position: relative;
+          padding-bottom: 56.25%; /* 16:9 宽高比 */
+          height: 0;
+        }
+        
+        .mv-player {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // 页面加载完成后初始化
+    addAnimationCSS();
+    init();
+  </script>
+</html>
